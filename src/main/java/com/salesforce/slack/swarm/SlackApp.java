@@ -2,11 +2,13 @@ package com.salesforce.slack.swarm;
 
 import com.google.gson.Gson;
 import com.salesforce.slack.swarm.model.Review;
+import com.salesforce.slack.swarm.model.ReviewDetails;
 import com.salesforce.slack.swarm.model.ReviewsData;
+import com.salesforce.slack.swarm.model.User;
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.WebEndpoint;
-import com.slack.api.bolt.jetty.SlackAppServer;
 import com.slack.api.bolt.response.Response;
+import com.slack.api.bolt.socket_mode.SocketModeApp;
 import com.slack.api.methods.response.views.ViewsOpenResponse;
 import com.slack.api.methods.response.views.ViewsPublishResponse;
 import com.slack.api.methods.response.views.ViewsUpdateResponse;
@@ -16,27 +18,24 @@ import com.slack.api.model.block.composition.PlainTextObject;
 import com.slack.api.model.block.element.BlockElement;
 import com.slack.api.model.event.AppHomeOpenedEvent;
 import com.slack.api.model.view.View;
+import lombok.extern.slf4j.Slf4j;
+import okhttp3.Credentials;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.Reader;
 import java.lang.reflect.Field;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.regex.Pattern;
 
 import static com.salesforce.slack.swarm.SlackApp.REVIEW_TYPE.AUTHOR;
 import static com.salesforce.slack.swarm.SlackApp.REVIEW_TYPE.PARTICIPANT;
-import static com.salesforce.slack.swarm.SlackApp.REVIEW_TYPE.UNDEFINED;
 import static com.slack.api.model.block.Blocks.*;
 import static com.slack.api.model.block.composition.BlockCompositions.markdownText;
 import static com.slack.api.model.block.composition.BlockCompositions.plainText;
@@ -44,10 +43,10 @@ import static com.slack.api.model.block.element.BlockElements.*;
 import static com.slack.api.model.view.Views.*;
 import static java.time.format.DateTimeFormatter.ISO_DATE;
 
+@Slf4j
 public class SlackApp {
 
     enum REVIEW_TYPE {
-        UNDEFINED("Undefined"),
         AUTHOR("I'm author"),
         PARTICIPANT("I'm  participant");
 
@@ -63,6 +62,20 @@ public class SlackApp {
     }
 
     private final static Gson GSON = new Gson();
+    private final static OkHttpClient REST_CLIENT;
+
+    static {
+        final Properties props = new Properties();
+        String rootDir = System.getProperty("user.home");
+        try (FileInputStream fis = new FileInputStream(rootDir + "/blt/config.blt")) {
+            props.load(fis);
+        } catch (IOException exc) {
+            log.error("Could not load properties from config file");
+            props.put("p4.user", "fake_user");
+            props.put("p4.password", "fake_password");
+        }
+        REST_CLIENT = createAuthenticatedClient(props.getProperty("p4.user"), props.getProperty("p4.password"));
+    }
 
     public static void main(String[] args) throws Exception {
         App app = new App();
@@ -70,35 +83,36 @@ public class SlackApp {
         app.endpoint(WebEndpoint.Method.POST, "/events", (req, ctx) -> ctx.ackWithJson(req.getRequestBodyAsString()));
 
         app.command("/hello", (req, ctx) -> ctx.ack(":wave: Hello!"));
+        app.command("/user", (req, ctx) -> {
+            String param = req.getPayload().getText();
+            if (StringUtils.isBlank(param)) {
+                return ctx.ack(":exclamation: Please type username");
+            }
+            User user = getUser(param);
+            return user != null
+                    ? ctx.ack(asBlocks(buildLayoutForUser(user)))
+                    : ctx.ack(":warning: User Not Found!");
+        });
 
         app.command("/changelist", (req, ctx) -> {
             String param = req.getPayload().getText();
             if (StringUtils.isBlank(param)) {
                 return ctx.ack(":exclamation: Please provide change list number you want to review");
             }
-            ReviewsData reviewsData = readObjectFromJsonFile("reviews.json", ReviewsData.class);
-            Optional<Review> reviewOpt = reviewsData.getReviews().stream().filter(review -> param.equals(review.getId().toString())).findFirst();
-            return reviewOpt.isPresent()
-                    ? ctx.ack(asBlocks(buildCompactLayoutForReview(reviewOpt.get(), new ArrayList<>())))
+            Review review = getReview(param);
+            return review != null
+                    ? ctx.ack(asBlocks(buildCompactLayoutForReview(review, new ArrayList<>())))
                     : ctx.ack(":warning: Review Not Found!");
         });
 
         Pattern pattern = Pattern.compile("details_[0-9]+");
         app.blockAction(pattern, (req, ctx) -> {
-            ReviewsData reviewsData;
-            try {
-                reviewsData = readObjectFromJsonFile("reviews.json", ReviewsData.class);
-            } catch (IOException e) {
-                return errorResponse("Error retrieving reviews");
-            }
             String actionId = req.getPayload().getActions().get(0).getActionId();
             String reviewId = actionId.substring(actionId.indexOf('_') + 1);
-            Optional<Review> reviewOpt = reviewsData.getReviews().stream()
-                    .filter(review -> reviewId.equals(review.getId().toString())).findFirst();
-
+            Review review = getReview(reviewId);
             ViewsOpenResponse viewsOpenRes = ctx.client().viewsOpen(r -> r
                     .triggerId(ctx.getTriggerId())
-                    .view(buildModalView(reviewOpt.orElse(null))));
+                    .view(buildModalView(review)));
 
             return viewsOpenRes.isOk()
                     ? ctx.ack()
@@ -108,22 +122,11 @@ public class SlackApp {
         app.blockAction("change_review_type", (req, ctx) -> {
             String selectedOption = req.getPayload().getActions().get(0).getSelectedOption().getValue();
             REVIEW_TYPE reviewType = REVIEW_TYPE.valueOf(selectedOption);
+
             ReviewsData reviewsData;
             try {
-                switch (reviewType) {
-                    case AUTHOR: {
-                        reviewsData = readObjectFromJsonFile("reviews.json", ReviewsData.class);
-                        break;
-                    }
-                    case PARTICIPANT: {
-                        reviewsData = readObjectFromJsonFile("participant_reviews.json", ReviewsData.class);
-                        break;
-                    }
-                    default: {
-                        reviewsData = null;
-                    }
-                }
-            } catch (Exception e) {
+                reviewsData = getChangeList(reviewType);
+            } catch (IOException e) {
                 return errorResponse("Error retrieving reviews");
             }
 
@@ -135,16 +138,26 @@ public class SlackApp {
         });
 
         app.event(AppHomeOpenedEvent.class, (payload, ctx) -> {
-            ViewsPublishResponse viewsPublishRes = ctx.client().viewsPublish(r -> r
-                    .userId(payload.getEvent().getUser())
-                    .view(buildHomeView())
-            );
-
-            return viewsPublishRes.isOk() ? ctx.ack() : errorResponse(viewsPublishRes.getError());
+            if (!"home".equals(payload.getEvent().getTab())) {
+                return ctx.ack();
+            }
+            ReviewsData reviewsData;
+            try {
+                reviewsData = getChangeList(AUTHOR);
+            } catch (IOException e) {
+                return errorResponse("Error retrieving reviews");
+            }
+            if (payload.getEvent().getView() == null) {
+                View view = buildHomeView(AUTHOR, reviewsData);
+                ViewsPublishResponse viewsPublishRes = ctx.client().viewsPublish(r -> r
+                        .userId(payload.getEvent().getUser())
+                        .view(view)
+                );
+                return viewsPublishRes.isOk() ? ctx.ack() : errorResponse(viewsPublishRes.getError());
+            }
+            return ctx.ack();
         });
-
-        SlackAppServer server = new SlackAppServer(app);
-        server.start();
+        new SocketModeApp(app).start();
     }
 
     private static Response errorResponse(String error) {
@@ -163,18 +176,12 @@ public class SlackApp {
         );
     }
 
-    private static View buildHomeView() {
-        return buildHomeView(UNDEFINED, null);
-    }
-
     private static View buildModalView(Review review) {
         return view(view -> view
                 .callbackId("pullrequest-details")
                 .type("modal")
-                .notifyOnClose(true)
+                .notifyOnClose(false)
                 .title(viewTitle(title -> title.type("plain_text").text("Review Details").emoji(true)))
-                .submit(viewSubmit(submit -> submit.type("plain_text").text("Submit").emoji(true)))
-                .close(viewClose(close -> close.type("plain_text").text("Cancel").emoji(true)))
                 .blocks(asBlocks(buildLayoutForReview(review)))
         );
     }
@@ -232,7 +239,9 @@ public class SlackApp {
                 ln + "*Status:* " + review.getStateLabel();
         blocks.add(section(section -> section
                         .text(markdownText(mt -> mt.text(sb)))
-                //.accessory()
+                        .accessory(imageElement(image -> image
+                                .imageUrl("https://swarm.workshop.perforce.com/view/guest/perforce_software/slack/main/images/60x60-Helix-Bee.png")
+                                .altText("Helix Swarm Bee")))
                 )
         );
         LocalDate date = Instant.ofEpochMilli(review.getCreated()).atZone(ZoneId.systemDefault()).toLocalDate();
@@ -240,7 +249,7 @@ public class SlackApp {
                 .elements(asContextElements(
                         imageElement(image ->
                                 image.imageUrl("https://api.slack.com/img/blocks/bkb_template_images/task-icon.png")
-                                        .altText("Image not found")
+                                        .altText("Changelist")
                         ),
                         markdownText("Submitted by: *" + review.getAuthor() + "* on " + date.format(ISO_DATE))
                 ))));
@@ -257,9 +266,21 @@ public class SlackApp {
         return blocks.toArray(LayoutBlock[]::new);
     }
 
+    private static LayoutBlock[] buildLayoutForUser(User user) {
+        if (user == null) return new LayoutBlock[0];
+        String ln = System.lineSeparator();
+        String text = "*Username:* " + user.getUsername()
+                + ln + "*Email:* " + user.getEmail()
+                + ln + "*Full Name:* " + user.getFullName()
+                + ln + "*Reviews:* " + user.getReviews();
+        return new LayoutBlock[]{
+                section(section -> section.text(markdownText(mt -> mt.text(text))))
+        };
+    }
+
     private static LayoutBlock[] buildLayoutForReview(Review review) {
         if (review == null) return new LayoutBlock[0];
-        return new LayoutBlock[] {
+        return new LayoutBlock[]{
                 section(section -> section.text(markdownText(mt -> mt.text(getReviewDescription(review)))))
         };
     }
@@ -279,11 +300,58 @@ public class SlackApp {
         return sb.toString();
     }
 
-    private static <T> T readObjectFromJsonFile(String fileName, Class<T> objectClass) throws IOException {
-        Path filePath = Paths.get(ClassLoader.getSystemResource(fileName).getPath());
-        try (Reader reader = Files.newBufferedReader(filePath)) {
-            return GSON.fromJson(reader, objectClass);
+    private static Review getReview(String number) throws IOException {
+        String url = "https://swarm.soma.salesforce.com/api/v9/reviews/" + number;
+        okhttp3.Response response = makeApiGetCall(url);
+        ReviewDetails reviewDetails = null;
+        if (response.body() != null) {
+            reviewDetails = GSON.fromJson(Objects.requireNonNull(response.body()).charStream(), ReviewDetails.class);
         }
+        response.close();
+        return reviewDetails != null ? reviewDetails.getReview() : null;
+    }
+
+    private static ReviewsData getChangeList(REVIEW_TYPE reviewType) throws IOException {
+        String url = "https://swarm.soma.salesforce.com/api/v9/reviews?max=5&";
+        switch (reviewType) {
+            case PARTICIPANT:
+                url += "participants=sprystupa";
+                break;
+            case AUTHOR:
+            default:
+                url += "author=sprystupa";
+        }
+        okhttp3.Response response = makeApiGetCall(url);
+        ReviewsData reviewsData = null;
+        if (response.body() != null) {
+            reviewsData = GSON.fromJson(Objects.requireNonNull(response.body()).charStream(), ReviewsData.class);
+        }
+        response.close();
+        return reviewsData;
+    }
+
+    private static User getUser(String username) throws IOException {
+        okhttp3.Response response = makeApiGetCall("https://swarm.soma.salesforce.com/api/v9/users?users=" + username);
+        User user = null;
+        if (response.body() != null) {
+            User[] users = GSON.fromJson(Objects.requireNonNull(response.body()).charStream(), User[].class);
+            if (users.length > 0) user = users[0];
+        }
+        response.close();
+        return user;
+    }
+
+    private static okhttp3.Response makeApiGetCall(String url) throws IOException {
+        Request request = new Request.Builder().url(url).build();
+        return REST_CLIENT.newCall(request).execute();
+    }
+
+    private static OkHttpClient createAuthenticatedClient(String username, String password) {
+        return new OkHttpClient.Builder().addInterceptor(chain -> {
+            String credential = Credentials.basic(username, password);
+            Request request = chain.request().newBuilder().addHeader("Authorization", credential).build();
+            return chain.proceed(request);
+        }).build();
     }
 
 }
