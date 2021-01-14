@@ -34,6 +34,7 @@ import java.time.ZoneId;
 import java.util.*;
 import java.util.regex.Pattern;
 
+import static com.salesforce.slack.swarm.SlackApp.APP_TAB.HOME;
 import static com.salesforce.slack.swarm.SlackApp.REVIEW_TYPE.AUTHOR;
 import static com.salesforce.slack.swarm.SlackApp.REVIEW_TYPE.PARTICIPANT;
 import static com.slack.api.model.block.Blocks.*;
@@ -45,6 +46,21 @@ import static java.time.format.DateTimeFormatter.ISO_DATE;
 
 @Slf4j
 public class SlackApp {
+
+    enum APP_TAB {
+        HOME("home"),
+        MESSAGES("messages");
+
+        private final String name;
+
+        APP_TAB(String name) {
+            this.name = name;
+        }
+
+        String getName() {
+            return this.name;
+        }
+    }
 
     enum REVIEW_TYPE {
         AUTHOR("I'm author"),
@@ -138,7 +154,7 @@ public class SlackApp {
         });
 
         app.event(AppHomeOpenedEvent.class, (payload, ctx) -> {
-            if (!"home".equals(payload.getEvent().getTab())) {
+            if (!HOME.getName().equals(payload.getEvent().getTab())) {
                 return ctx.ack();
             }
             ReviewsData reviewsData;
