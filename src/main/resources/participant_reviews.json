@@ -1,0 +1,259 @@
+{
+  "lastSeen": 29854614,
+  "reviews": [
+    {
+      "id": 30434146,
+      "approvals": {
+        "spuliaiev": [
+          2
+        ]
+      },
+      "author": "spuliaiev",
+      "changes": [
+        30434109,
+        30434147,
+        30434569
+      ],
+      "comments": [
+        4,
+        0
+      ],
+      "commits": [],
+      "commitStatus": [],
+      "created": 1610391253,
+      "deployDetails": [],
+      "deployStatus": null,
+      "description": "W-8675546 [Security] Update jQuery library for CI BT Tool\n\njQuery update from 2.2.4 to 3.5.1\ndatatables JS moved to common\/js folder\njQueryUI moved to common\/js folder\n\n\nhttps:\/\/gus.lightning.force.com\/lightning\/r\/ADM_Work__c\/a07B0000008wBqFIAU\/view\n\n@rev manuel.jasso@\n",
+      "groups": [
+        "accounts",
+        "cheetah_cms_w",
+        "coreapp_readonly",
+        "dev",
+        "everyone",
+        "is_read",
+        "sforce",
+        "web"
+      ],
+      "participants": {
+        "garrett.chan": [],
+        "manuel.jasso": {
+          "vote": {
+            "value": 1,
+            "version": 2,
+            "isStale": false
+          }
+        },
+        "sprystupa": {
+          "vote": {
+            "value": 1,
+            "version": 2,
+            "isStale": false
+          }
+        },
+        "spuliaiev": []
+      },
+      "pending": true,
+      "projects": [],
+      "reviewerGroups": [],
+      "state": "approved",
+      "stateLabel": "Approved",
+      "testDetails": [],
+      "testStatus": null,
+      "type": "default",
+      "updated": 1610396701,
+      "updateDate": "2021-01-11T20:25:01+00:00"
+    },
+    {
+      "id": 30165833,
+      "approvals": {
+        "ndewani": [
+          1
+        ]
+      },
+      "author": "dyaduvanshi",
+      "changes": [
+        30156723,
+        30165834,
+        30427597
+      ],
+      "comments": [
+        0,
+        0
+      ],
+      "commits": [],
+      "commitStatus": [],
+      "created": 1608789520,
+      "deployDetails": [],
+      "deployStatus": null,
+      "description": "[TRUST] [TD TD-0090122] Retire Expired Security Alert: Block Certain Fields in the User Record for Orgs with Communities and Portals\n\nhttps:\/\/gus.lightning.force.com\/lightning\/r\/ADM_Work__c\/a07B0000008jCQOIA2\/view\n\n@rev tbd@\n@markfixed@",
+      "groups": [
+        "chatsrc",
+        "cheetah_cms_w",
+        "coreapp_readonly",
+        "csi_r",
+        "dev",
+        "devopenonly",
+        "everyone",
+        "is_read",
+        "openonly",
+        "qa",
+        "sfga",
+        "sfma",
+        "sforce",
+        "swarm",
+        "swarm-project-communities-analytics",
+        "web"
+      ],
+      "participants": {
+        "dyaduvanshi": [],
+        "lav.kumar": [],
+        "lgiri": [],
+        "mmaheshkar": [],
+        "ndewani": {
+          "vote": {
+            "value": 1,
+            "version": 1,
+            "isStale": true
+          }
+        },
+        "saurabhtiwari": [],
+        "sonal.kumar": [],
+        "ssengar": [],
+        "ysachdeva": []
+      },
+      "pending": true,
+      "projects": [],
+      "reviewerGroups": {
+        "accounts": []
+      },
+      "state": "approved",
+      "stateLabel": "Approved",
+      "testDetails": [],
+      "testStatus": null,
+      "type": "default",
+      "updated": 1610338109,
+      "updateDate": "2021-01-11T04:08:29+00:00"
+    },
+    {
+      "id": 30114855,
+      "approvals": null,
+      "author": "spuliaiev",
+      "changes": [
+        30089218,
+        30114856,
+        30127448,
+        30235753
+      ],
+      "comments": [
+        0,
+        0
+      ],
+      "commits": [],
+      "commitStatus": [],
+      "created": 1608489573,
+      "deployDetails": [],
+      "deployStatus": null,
+      "description": "W-8563962 Record Collections, SRCItems and SRCMembers are copied over to new sandbox orgs\n\nhttps:\/\/gus.lightning.force.com\/a07B0000008lIPmIAM\n\n@rev alicia.ong@\n",
+      "groups": [
+        "accounts",
+        "cheetah_cms_w",
+        "coreapp_readonly",
+        "dev",
+        "everyone",
+        "is_read",
+        "sforce",
+        "web"
+      ],
+      "participants": {
+        "alicia.ong": [],
+        "garrett.chan": [],
+        "rgaddi": {
+          "vote": {
+            "value": 1,
+            "version": 1,
+            "isStale": true
+          }
+        },
+        "sprystupa": [],
+        "spuliaiev": []
+      },
+      "pending": true,
+      "projects": [],
+      "reviewerGroups": [],
+      "state": "needsReview",
+      "stateLabel": "Needs Review",
+      "testDetails": [],
+      "testStatus": null,
+      "type": "default",
+      "updated": 1609307299,
+      "updateDate": "2020-12-30T05:48:19+00:00"
+    },
+    {
+      "id": 29854614,
+      "approvals": null,
+      "author": "spuliaiev",
+      "changes": [
+        29853629,
+        29854615,
+        29856386,
+        29882999,
+        29885933,
+        29888256
+      ],
+      "comments": [
+        0,
+        0
+      ],
+      "commits": [],
+      "commitStatus": [],
+      "created": 1607463531,
+      "deployDetails": [],
+      "deployStatus": null,
+      "description": "W-8551371 [Trust] Update Ownership.Yaml files for new files created by ECC Backend Team during releases 228 and 230\n\nReport: https:\/\/docs.google.com\/spreadsheets\/d\/1wB7gUtScCkaw2ZinDCPjEvRTghDLcfJ9JrOIhQEQ2Cs\/edit#gid=0\n\nhttps:\/\/gus.lightning.force.com\/lightning\/r\/ADM_Work__c\/a07B0000008l4MnIAI\/view\n\n\n@rev rgaddi@",
+      "groups": [
+        "accounts",
+        "cheetah_cms_w",
+        "coreapp_readonly",
+        "dev",
+        "everyone",
+        "is_read",
+        "sforce",
+        "web"
+      ],
+      "participants": {
+        "alicia.ong": {
+          "required": true
+        },
+        "garrett.chan": {
+          "required": true,
+          "vote": {
+            "value": 1,
+            "version": 1,
+            "isStale": true
+          }
+        },
+        "rgaddi": {
+          "required": true,
+          "vote": {
+            "value": 1,
+            "version": 1,
+            "isStale": true
+          }
+        },
+        "sprystupa": [],
+        "spuliaiev": []
+      },
+      "pending": true,
+      "projects": [],
+      "reviewerGroups": [],
+      "state": "needsReview",
+      "stateLabel": "Needs Review",
+      "testDetails": [],
+      "testStatus": null,
+      "type": "default",
+      "updated": 1607551458,
+      "updateDate": "2020-12-09T22:04:18+00:00"
+    }
+  ],
+  "totalCount": 4
+}
