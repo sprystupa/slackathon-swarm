@@ -79,6 +79,7 @@ public class SlackApp {
 
     private final static Gson GSON = new Gson();
     private final static OkHttpClient REST_CLIENT;
+    private final static String USER;
 
     static {
         final Properties props = new Properties();
@@ -90,6 +91,7 @@ public class SlackApp {
             props.put("p4.user", "fake_user");
             props.put("p4.password", "fake_password");
         }
+        USER = props.getProperty("p4.user");
         REST_CLIENT = createAuthenticatedClient(props.getProperty("p4.user"), props.getProperty("p4.password"));
     }
 
@@ -331,11 +333,11 @@ public class SlackApp {
         String url = "https://swarm.soma.salesforce.com/api/v9/reviews?max=5&";
         switch (reviewType) {
             case PARTICIPANT:
-                url += "participants=sprystupa";
+                url += "participants=" + USER;
                 break;
             case AUTHOR:
             default:
-                url += "author=sprystupa";
+                url += "author=" + USER;
         }
         okhttp3.Response response = makeApiGetCall(url);
         ReviewsData reviewsData = null;
