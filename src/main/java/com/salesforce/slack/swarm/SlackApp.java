@@ -22,16 +22,19 @@ import lombok.extern.slf4j.Slf4j;
 import okhttp3.Credentials;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.ResponseBody;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
 import java.util.regex.Pattern;
 
 import static com.salesforce.slack.swarm.SlackApp.APP_TAB.HOME;
@@ -41,11 +44,18 @@ import static com.slack.api.model.block.Blocks.*;
 import static com.slack.api.model.block.composition.BlockCompositions.markdownText;
 import static com.slack.api.model.block.composition.BlockCompositions.plainText;
 import static com.slack.api.model.block.element.BlockElements.*;
-import static com.slack.api.model.view.Views.*;
+import static com.slack.api.model.view.Views.view;
+import static com.slack.api.model.view.Views.viewTitle;
 import static java.time.format.DateTimeFormatter.ISO_DATE;
 
 @Slf4j
 public class SlackApp {
+
+    public static final String USERS_API_URL = "https://swarm.soma.salesforce.com/api/v9/users?users=";
+    public static final String REVIEW_URL = "https://swarm.soma.salesforce.com/api/v9/reviews/";
+    public static final String REVIEW_AUTHOR_URL = "https://swarm.soma.salesforce.com/api/v9/reviews?max=5&author=";
+    public static final String REVIEW_PARTICIPANT_URL = "https://swarm.soma.salesforce.com/api/v9/reviews?max=5&participants=";
+    public static final String AUTHORIZATION_HEADER = "Authorization";
 
     enum APP_TAB {
         HOME("home"),
@@ -82,7 +92,7 @@ public class SlackApp {
     private final static String USER;
 
     static {
-        final Properties props = new Properties();
+        Properties props = new Properties();
         String rootDir = System.getProperty("user.home");
         try (FileInputStream fis = new FileInputStream(rootDir + "/blt/config.blt")) {
             props.load(fis);
@@ -152,7 +162,9 @@ public class SlackApp {
                     r.viewId(req.getPayload().getView().getId())
                             .view(buildHomeView(reviewType, reviewsData)));
 
-            return viewsUpdateResponse.isOk() ? ctx.ack() : errorResponse(viewsUpdateResponse.getError());
+            return viewsUpdateResponse.isOk()
+                    ? ctx.ack()
+                    : errorResponse(viewsUpdateResponse.getError());
         });
 
         app.event(AppHomeOpenedEvent.class, (payload, ctx) -> {
@@ -171,7 +183,9 @@ public class SlackApp {
                         .userId(payload.getEvent().getUser())
                         .view(view)
                 );
-                return viewsPublishRes.isOk() ? ctx.ack() : errorResponse(viewsPublishRes.getError());
+                return viewsPublishRes.isOk()
+                        ? ctx.ack()
+                        : errorResponse(viewsPublishRes.getError());
             }
             return ctx.ack();
         });
@@ -250,9 +264,10 @@ public class SlackApp {
 
     private static LayoutBlock[] buildCompactLayoutForReview(Review review, List<LayoutBlock> blocks) {
         if (review == null) return new LayoutBlock[0];
+
         String ln = System.lineSeparator();
         blocks.add(divider());
-        String sb = "*Change List:* " + "<https://swarm.soma.salesforce.com/reviews/" + review.getId() + "| :link: " + review.getId() + ">" +
+        String sb = "*Change List:* " + "<" + REVIEW_URL + review.getId() + "| :link: " + review.getId() + ">" +
                 ln + "*Description:* " + review.getDescription() +
                 ln + "*Status:* " + review.getStateLabel();
         blocks.add(section(section -> section
@@ -273,12 +288,21 @@ public class SlackApp {
                 ))));
 
         List<BlockElement> actionsList = new ArrayList<>();
-        actionsList.add(button(b -> b.text(plainText(pt -> pt.text("View Details"))).value("details_" + review.getId()).actionId("details_" + review.getId())));
+        actionsList.add(button(b -> b.text(plainText(pt -> pt
+                .text("View Details")))
+                .value("details_" + review.getId())
+                .actionId("details_" + review.getId())));
+
         if (review.getState().startsWith("needs")) {
-            actionsList.add(button(b -> b.text(plainText(pt -> pt.text("Approve")))
-                    .style("primary").value("approve_" + review.getId()).actionId("approve_" + review.getId())));
-            actionsList.add(button(b -> b.text(plainText(pt -> pt.text("Decline")))
-                    .style("danger").value("decline_" + review.getId()).actionId("decline_" + review.getId())));
+            actionsList.add(button(b -> b
+                    .text(plainText(pt -> pt.text("Approve")))
+                    .style("primary").value("approve_" + review.getId())
+                    .actionId("approve_" + review.getId())));
+
+            actionsList.add(button(b -> b
+                    .text(plainText(pt -> pt.text("Decline")))
+                    .style("danger").value("decline_" + review.getId())
+                    .actionId("decline_" + review.getId())));
         }
         blocks.add(actions(actions -> actions.elements(asElements(actionsList.toArray(BlockElement[]::new)))));
         return blocks.toArray(LayoutBlock[]::new);
@@ -286,6 +310,7 @@ public class SlackApp {
 
     private static LayoutBlock[] buildLayoutForUser(User user) {
         if (user == null) return new LayoutBlock[0];
+
         String ln = System.lineSeparator();
         String text = "*Username:* " + user.getUsername()
                 + ln + "*Email:* " + user.getEmail()
@@ -298,65 +323,77 @@ public class SlackApp {
 
     private static LayoutBlock[] buildLayoutForReview(Review review) {
         if (review == null) return new LayoutBlock[0];
+
         return new LayoutBlock[]{
                 section(section -> section.text(markdownText(mt -> mt.text(getReviewDescription(review)))))
         };
     }
 
     private static String getReviewDescription(Review review) {
-        Field[] fields = review.getClass().getDeclaredFields();
         StringBuilder sb = new StringBuilder();
         String ln = System.lineSeparator();
-        Arrays.stream(fields).forEach(field -> {
-            try {
-                field.setAccessible(true);
-                sb.append(ln).append("*").append(field.getName()).append(":* ").append(field.get(review));
-            } catch (Exception ignored) {
-
-            }
-        });
+        sb.append("*Author:* ").append(review.getAuthor()).append(ln)
+          .append("*Description:* ").append(review.getDescription()).append(ln)
+          .append("*Status:* ").append(review.getStateLabel()).append(ln)
+          .append("*Deploy status:* ").append(review.getDeployStatus()).append(ln)
+          .append("*Test status:* ").append(review.getTestStatus()).append(ln)
+          .append("*Commit status:* ").append(review.getCommitStatus()).append(ln)
+          .append("*Commits:* ").append(review.getCommits()).append(ln)
+          .append("*Changes:* ").append(review.getChanges()).append(ln)
+          .append("*Comments count:* ").append(review.getComments()).append(ln)
+          .append("*Participants:* ").append(review.getParticipants()).append(ln);
+        if (review.getCreated() != null) {
+            LocalDate created = Instant.ofEpochMilli(review.getCreated()).atZone(ZoneId.systemDefault()).toLocalDate();
+            sb.append("*Created :* ").append(created.format(ISO_DATE)).append(ln);
+        }
+        if (review.getUpdated() != null) {
+            LocalDate updated = Instant.ofEpochMilli(review.getUpdated()).atZone(ZoneId.systemDefault()).toLocalDate();
+            sb.append("*Last updated :* ").append(updated.format(ISO_DATE)).append(ln);
+        }
         return sb.toString();
     }
 
     private static Review getReview(String number) throws IOException {
-        String url = "https://swarm.soma.salesforce.com/api/v9/reviews/" + number;
-        okhttp3.Response response = makeApiGetCall(url);
-        ReviewDetails reviewDetails = null;
-        if (response.body() != null) {
-            reviewDetails = GSON.fromJson(Objects.requireNonNull(response.body()).charStream(), ReviewDetails.class);
+        try (okhttp3.Response response = makeApiGetCall(REVIEW_URL + number)) {
+            ReviewDetails reviewDetails = null;
+            ResponseBody body = response.body();
+            if (response.isSuccessful() && body != null) {
+                reviewDetails = GSON.fromJson(body.charStream(), ReviewDetails.class);
+            }
+            return reviewDetails != null ? reviewDetails.getReview() : null;
         }
-        response.close();
-        return reviewDetails != null ? reviewDetails.getReview() : null;
     }
 
     private static ReviewsData getChangeList(REVIEW_TYPE reviewType) throws IOException {
-        String url = "https://swarm.soma.salesforce.com/api/v9/reviews?max=5&";
+        String url;
         switch (reviewType) {
             case PARTICIPANT:
-                url += "participants=" + USER;
+                url = REVIEW_PARTICIPANT_URL + USER;
                 break;
             case AUTHOR:
             default:
-                url += "author=" + USER;
+                url = REVIEW_AUTHOR_URL + USER;
         }
-        okhttp3.Response response = makeApiGetCall(url);
-        ReviewsData reviewsData = null;
-        if (response.body() != null) {
-            reviewsData = GSON.fromJson(Objects.requireNonNull(response.body()).charStream(), ReviewsData.class);
+        try (okhttp3.Response response = makeApiGetCall(url)) {
+            ReviewsData reviewsData = null;
+            ResponseBody body = response.body();
+            if (response.isSuccessful() && body != null) {
+                reviewsData = GSON.fromJson(body.charStream(), ReviewsData.class);
+            }
+            return reviewsData;
         }
-        response.close();
-        return reviewsData;
     }
 
     private static User getUser(String username) throws IOException {
-        okhttp3.Response response = makeApiGetCall("https://swarm.soma.salesforce.com/api/v9/users?users=" + username);
-        User user = null;
-        if (response.body() != null) {
-            User[] users = GSON.fromJson(Objects.requireNonNull(response.body()).charStream(), User[].class);
-            if (users.length > 0) user = users[0];
+        try (okhttp3.Response response = makeApiGetCall(USERS_API_URL + username)) {
+            User user = null;
+            ResponseBody body = response.body();
+            if (response.isSuccessful() && body != null) {
+                User[] users = GSON.fromJson(body.charStream(), User[].class);
+                if (ArrayUtils.isNotEmpty(users)) user = users[0];
+            }
+            return user;
         }
-        response.close();
-        return user;
     }
 
     private static okhttp3.Response makeApiGetCall(String url) throws IOException {
@@ -367,7 +404,7 @@ public class SlackApp {
     private static OkHttpClient createAuthenticatedClient(String username, String password) {
         return new OkHttpClient.Builder().addInterceptor(chain -> {
             String credential = Credentials.basic(username, password);
-            Request request = chain.request().newBuilder().addHeader("Authorization", credential).build();
+            Request request = chain.request().newBuilder().addHeader(AUTHORIZATION_HEADER, credential).build();
             return chain.proceed(request);
         }).build();
     }
