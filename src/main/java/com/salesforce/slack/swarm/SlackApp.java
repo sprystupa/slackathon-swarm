@@ -108,6 +108,7 @@ public class SlackApp {
     public static void main(String[] args) throws Exception {
         App app = new App();
 
+        app.endpoint(WebEndpoint.Method.GET, "/", (req, ctx) -> ctx.ack());
         app.endpoint(WebEndpoint.Method.POST, "/events", (req, ctx) -> ctx.ackWithJson(req.getRequestBodyAsString()));
 
         app.command("/hello", (req, ctx) -> ctx.ack(":wave: Hello!"));
