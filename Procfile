@@ -1,0 +1,1 @@
+web: java $JAVA_OPTS -jar target/swarm-slack-app.jar com.salesforce.slack.swarm.SlackApp
