@@ -5,8 +5,11 @@ import com.salesforce.slack.swarm.model.Review;
 import com.salesforce.slack.swarm.model.ReviewDetails;
 import com.salesforce.slack.swarm.model.ReviewsData;
 import com.salesforce.slack.swarm.model.User;
+import com.slack.api.app_backend.slash_commands.payload.SlashCommandPayload;
 import com.slack.api.bolt.App;
 import com.slack.api.bolt.WebEndpoint;
+import com.slack.api.bolt.context.builtin.SlashCommandContext;
+import com.slack.api.bolt.request.builtin.SlashCommandRequest;
 import com.slack.api.bolt.response.Response;
 import com.slack.api.bolt.socket_mode.SocketModeApp;
 import com.slack.api.methods.response.views.ViewsOpenResponse;
@@ -34,9 +37,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import java.util.regex.Pattern;
 
 import static com.salesforce.slack.swarm.SlackApp.APP_TAB.HOME;
@@ -89,6 +90,36 @@ public class SlackApp {
         }
     }
 
+    enum APP_COMMAND {
+        UNKNOWN("unknown"),
+        HELLO("/hello"),
+        USER("/user"),
+        CHANGELIST("/changelist");
+
+        private final String command;
+        private final static Map<String, APP_COMMAND> commandsMap;
+
+        static {
+            commandsMap = new HashMap<>(APP_COMMAND.values().length);
+            for (APP_COMMAND appCommand: APP_COMMAND.values()) {
+                commandsMap.put(appCommand.getCommand(), appCommand);
+            }
+        }
+
+        APP_COMMAND(String command) {
+            this.command = command;
+        }
+
+        String getCommand() {
+            return this.command;
+        }
+
+        static APP_COMMAND lookupCommand(String commandName) {
+            APP_COMMAND appCommand = commandsMap.get(commandName);
+            return appCommand != null ? appCommand : UNKNOWN;
+        }
+    }
+
     private final static Gson GSON = new Gson();
     private final static OkHttpClient REST_CLIENT;
     private final static String USER;
@@ -112,27 +143,24 @@ public class SlackApp {
 
         app.endpoint(WebEndpoint.Method.POST, "/events", (req, ctx) -> ctx.ackWithJson(req.getRequestBodyAsString()));
 
-        app.command("/hello", (req, ctx) -> ctx.ack(":wave: Hello!"));
-        app.command("/user", (req, ctx) -> {
-            String param = req.getPayload().getText();
-            if (StringUtils.isBlank(param)) {
-                return ctx.ack(":exclamation: Please type username");
+        app.command(Pattern.compile("/.*"), (req, ctx) -> {
+            SlashCommandPayload payload = req.getPayload();
+            String command = payload.getCommand();
+            String user = payload.getUserName();
+            String channel = payload.getChannelName();
+            log.info("received {} command from user '{}' on channel '{}'", command, user, channel);
+            APP_COMMAND appCommand = APP_COMMAND.lookupCommand(command);
+            switch (appCommand) {
+                case HELLO:
+                    return ctx.ack(":wave: Hello " + user + "!");
+                case USER:
+                    return findUser(req, ctx);
+                case CHANGELIST:
+                    return findCodeReview(req, ctx);
+                case UNKNOWN:
+                default:
+                    return ctx.ack(":warning: Command not supported!");
             }
-            User user = getUser(param);
-            return user != null
-                    ? ctx.ack(asBlocks(buildLayoutForUser(user)))
-                    : ctx.ack(":warning: User Not Found!");
-        });
-
-        app.command("/changelist", (req, ctx) -> {
-            String param = req.getPayload().getText();
-            if (StringUtils.isBlank(param)) {
-                return ctx.ack(":exclamation: Please provide change list number you want to review");
-            }
-            Review review = getReview(param);
-            return review != null
-                    ? ctx.ack(asBlocks(buildCompactLayoutForReview(review, new ArrayList<>())))
-                    : ctx.ack(":warning: Review Not Found!");
         });
 
         Pattern pattern = Pattern.compile("details_[0-9]+");
@@ -202,6 +230,28 @@ public class SlackApp {
         }
         log.info("Starting Slack App in socket mode...");
         new SocketModeApp(app).start();
+    }
+
+    private static Response findCodeReview(SlashCommandRequest req, SlashCommandContext ctx) throws IOException {
+        String param = req.getPayload().getText();
+        if (StringUtils.isBlank(param)) {
+            return ctx.ack(":exclamation: Please provide change list number you want to review");
+        }
+        Review review = getReview(param);
+        return review != null
+                ? ctx.ack(asBlocks(buildCompactLayoutForReview(review, new ArrayList<>())))
+                : ctx.ack(":warning: Review Not Found!");
+    }
+
+    private static Response findUser(SlashCommandRequest req, SlashCommandContext ctx) throws IOException {
+        String param = req.getPayload().getText();
+        if (StringUtils.isBlank(param)) {
+            return ctx.ack(":exclamation: Please type username");
+        }
+        User user = getUser(param);
+        return user != null
+                ? ctx.ack(asBlocks(buildLayoutForUser(user)))
+                : ctx.ack(":warning: User Not Found!");
     }
 
     private static Response errorResponse(String error) {
