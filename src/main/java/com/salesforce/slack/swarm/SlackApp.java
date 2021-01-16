@@ -26,6 +26,8 @@ import okhttp3.ResponseBody;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
+import org.glassfish.grizzly.http.server.HttpServer;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -108,7 +110,6 @@ public class SlackApp {
     public static void main(String[] args) throws Exception {
         App app = new App();
 
-        app.endpoint(WebEndpoint.Method.GET, "/", (req, ctx) -> ctx.ack());
         app.endpoint(WebEndpoint.Method.POST, "/events", (req, ctx) -> ctx.ackWithJson(req.getRequestBodyAsString()));
 
         app.command("/hello", (req, ctx) -> ctx.ack(":wave: Hello!"));
@@ -190,6 +191,16 @@ public class SlackApp {
             }
             return ctx.ack();
         });
+
+        String herokuPort = System.getenv("PORT");
+        if (NumberUtils.isDigits(herokuPort)) {
+            int port = Integer.parseInt(herokuPort);
+            HttpServer.createSimpleServer(".", port).start();
+            log.info("Started Grizzly Http Server on port: {}", port);
+        } else {
+            log.error("Could not determine port for Grizzly Http Server");
+        }
+        log.info("Starting Slack App in socket mode...");
         new SocketModeApp(app).start();
     }
 
